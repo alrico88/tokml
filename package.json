@@ -2,7 +2,14 @@
   "name": "geokml",
   "version": "0.1.0",
   "description": "Convert GeoJSON to KML with simplestyle support",
-  "main": "index.js",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
   "scripts": {
     "build": "tsup",
     "prepare": "pnpm run build"
