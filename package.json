@@ -1,6 +1,6 @@
 {
   "name": "geokml",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Convert GeoJSON to KML with simplestyle support",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
