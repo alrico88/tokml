@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: ['./src/index.js'],
@@ -6,5 +6,6 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   format: ['cjs', 'esm'],
-  minify: true
-})
+  minify: true,
+  dts: true,
+});

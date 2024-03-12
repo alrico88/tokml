@@ -10,6 +10,7 @@
       "import": "./dist/index.mjs"
     }
   },
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsup",
     "prepare": "pnpm run build"
