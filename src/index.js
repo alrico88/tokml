@@ -164,7 +164,7 @@ const defaultOptions = {
  * @return {string}
  */
 export function toKML(geojson, options) {
-  options = defu(options, defaultOptions);
+  const filledOptions = defu(options, defaultOptions);
 
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +
@@ -173,9 +173,9 @@ export function toKML(geojson, options) {
       { xmlns: 'http://www.opengis.net/kml/2.2' },
       tag(
         'Document',
-        documentName(options) +
-          documentDescription(options) +
-          root(geojson, options)
+        documentName(filledOptions) +
+          documentDescription(filledOptions) +
+          root(geojson, filledOptions)
       )
     )
   );

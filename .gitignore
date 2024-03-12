@@ -69,3 +69,4 @@ coverage
 
 codecov.sh
 .DS_Store
+dist
