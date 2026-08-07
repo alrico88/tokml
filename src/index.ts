@@ -12,9 +12,15 @@ import {
 } from './helpers/style';
 import { tag } from './lib/strxml';
 import esc from './lib/xml-escape';
-import type { Feature, GeoJSONInput, Properties } from './types';
+import type {
+  Feature,
+  FeatureCollection,
+  GeoJSONInput,
+  Properties,
+} from './types';
 
 const DEFAULT_ICON_BASE_URL = 'https://api.tiles.mapbox.com/v3/marker/';
+const DEFAULT_UNGROUPED_FOLDER_NAME = 'Uncategorized';
 
 export interface KMLOptions {
   documentName?: string;
@@ -24,6 +30,8 @@ export interface KMLOptions {
   simplestyle?: boolean;
   iconBaseUrl?: string;
   timestamp?: string;
+  groupBy?: (properties: Properties) => string | null | undefined;
+  ungroupedFolderName?: string;
 }
 
 function documentName(options: KMLOptions): string {
@@ -131,13 +139,67 @@ function feature(options: KMLOptions, styleHashesArray: string[]) {
   };
 }
 
+function folder(
+  features: Feature[],
+  folderName: string,
+  options: KMLOptions,
+  styleHashesArray: string[]
+): string {
+  const content = features.map(feature(options, styleHashesArray)).join('');
+  if (!content) return '';
+  return tag('Folder', tag('name', esc(folderName) ?? '') + content);
+}
+
+function collection(
+  _: FeatureCollection,
+  options: KMLOptions,
+  styleHashesArray: string[]
+): string {
+  const groups = new Map<string, Feature[]>();
+  const ungrouped: Feature[] = [];
+
+  for (const feature of _.features ?? []) {
+    const groupName = options.groupBy?.(feature.properties ?? {});
+    if (groupName === null || groupName === undefined) {
+      ungrouped.push(feature);
+    } else {
+      const group = groups.get(groupName) ?? [];
+      group.push(feature);
+      groups.set(groupName, group);
+    }
+  }
+
+  let content = '';
+  for (const [groupName, features] of groups) {
+    content += folder(features, groupName, options, styleHashesArray);
+  }
+
+  const ungroupedFolderName = options.ungroupedFolderName;
+  if (ungrouped.length) {
+    if (ungroupedFolderName !== undefined) {
+      content += folder(
+        ungrouped,
+        ungroupedFolderName,
+        options,
+        styleHashesArray
+      );
+    } else {
+      content += ungrouped.map(feature(options, styleHashesArray)).join('');
+    }
+  }
+
+  return content;
+}
+
 function root(_: GeoJSONInput, options: KMLOptions): string {
   if (!_.type) return '';
   var styleHashesArray: string[] = [];
 
   switch (_.type) {
     case 'FeatureCollection':
-      return _.features?.map(feature(options, styleHashesArray)).join('') ?? '';
+      return options.groupBy
+        ? collection(_, options, styleHashesArray)
+        : (_.features?.map(feature(options, styleHashesArray)).join('') ?? '');
     case 'Feature':
       return feature(options, styleHashesArray)(_);
     default:
@@ -162,6 +224,13 @@ const defaultOptions: KMLOptions = {
   timestamp: 'timestamp',
 };
 
+function ungroupedFolderName(options?: KMLOptions): string | undefined {
+  if (options !== undefined && 'ungroupedFolderName' in options) {
+    return options.ungroupedFolderName;
+  }
+  return DEFAULT_UNGROUPED_FOLDER_NAME;
+}
+
 /**
  * Convert GeoJSON to KML
  *
@@ -171,7 +240,10 @@ const defaultOptions: KMLOptions = {
  * @return {string}
  */
 export function toKML(geojson: GeoJSONInput, options?: KMLOptions): string {
-  const filledOptions = defu(options, defaultOptions);
+  const filledOptions: KMLOptions = {
+    ...defu(options, defaultOptions),
+    ungroupedFolderName: ungroupedFolderName(options),
+  };
 
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +

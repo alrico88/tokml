@@ -95,6 +95,178 @@ describe('simplestyle spec', () => {
   });
 });
 
+describe('groupBy folders', () => {
+  function pointFeature(
+    name: string,
+    props: Record<string, unknown>
+  ): Record<string, unknown> {
+    return {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [0, 0] },
+      properties: { name, ...props },
+    };
+  }
+
+  function countFolders(kml: string): number {
+    return kml.match(/<Folder>/g)?.length ?? 0;
+  }
+
+  it('groups features into folders by groupBy result', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [
+        pointFeature('p1', { category: 'a' }),
+        pointFeature('p2', { category: 'b' }),
+        pointFeature('p3', { category: 'a' }),
+      ],
+    };
+    const kml = toKML(fc, { groupBy: (p) => String(p.category) });
+    expect(countFolders(kml)).toBe(2);
+    expect(kml).toContain('<Folder><name>a</name>');
+    expect(kml).toContain('<Folder><name>b</name>');
+  });
+
+  it('keeps features with the same folder name together', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [
+        pointFeature('p1', { category: 'a' }),
+        pointFeature('p2', { category: 'b' }),
+        pointFeature('p3', { category: 'a' }),
+      ],
+    };
+    const kml = toKML(fc, { groupBy: (p) => String(p.category) });
+    const folderA = kml.slice(0, kml.indexOf('</Folder>'));
+    expect(folderA).toContain('<name>p1</name>');
+    expect(folderA).toContain('<name>p3</name>');
+    expect(folderA).not.toContain('<name>p2</name>');
+  });
+
+  it('puts features without a group in the default Uncategorized folder', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [
+        pointFeature('p1', { category: 'x' }),
+        pointFeature('p2', {}),
+        pointFeature('p3', { category: null }),
+      ],
+    };
+    const kml = toKML(fc, { groupBy: (p) => p.category as string | undefined });
+    expect(countFolders(kml)).toBe(2);
+    expect(kml).toContain('<Folder><name>Uncategorized</name>');
+    const uncategorized = kml.slice(
+      kml.indexOf('<Folder><name>Uncategorized</name>')
+    );
+    expect(uncategorized).toContain('<name>p2</name>');
+    expect(uncategorized).toContain('<name>p3</name>');
+  });
+
+  it('uses a custom ungrouped folder name', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [pointFeature('p1', { category: 'x' }), pointFeature('p2', {})],
+    };
+    const kml = toKML(fc, {
+      groupBy: (p) => p.category as string | undefined,
+      ungroupedFolderName: 'Other',
+    });
+    expect(countFolders(kml)).toBe(2);
+    expect(kml).toContain('<Folder><name>Other</name>');
+    expect(kml).not.toContain('Uncategorized');
+  });
+
+  it('leaves ungrouped features loose in the Document when ungroupedFolderName is undefined', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [pointFeature('p1', { category: 'x' }), pointFeature('p2', {})],
+    };
+    const kml = toKML(fc, {
+      groupBy: (p) => p.category as string | undefined,
+      ungroupedFolderName: undefined,
+    });
+    expect(countFolders(kml)).toBe(1);
+    expect(kml).not.toContain('Uncategorized');
+    expect(kml.slice(kml.indexOf('</Folder>'))).toContain('<name>p2</name>');
+  });
+
+  it('supports a complex groupBy callback combining properties', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [
+        pointFeature('p1', { region: 'north', type: 'road' }),
+        pointFeature('p2', { region: 'south', type: 'river' }),
+        pointFeature('p3', { region: 'north', type: 'lake' }),
+        pointFeature('p4', { region: 'north', type: 'road' }),
+      ],
+    };
+    const kml = toKML(fc, {
+      groupBy: (p) => `${p.region} - ${p.type}`,
+    });
+    expect(countFolders(kml)).toBe(3);
+    expect(kml).toContain('<Folder><name>north - road</name>');
+    expect(kml).toContain('<Folder><name>south - river</name>');
+    expect(kml).toContain('<Folder><name>north - lake</name>');
+  });
+
+  it('does not wrap a single Feature in a folder', () => {
+    const kml = toKML(pointFeature('p1', { category: 'a' }), {
+      groupBy: (p) => String(p.category),
+    });
+    expect(countFolders(kml)).toBe(0);
+  });
+
+  it('does not wrap a bare Geometry in a folder', () => {
+    const kml = toKML(
+      { type: 'Point', coordinates: [0, 0] },
+      {
+        groupBy: () => 'x',
+      }
+    );
+    expect(countFolders(kml)).toBe(0);
+  });
+
+  it('escapes XML characters in folder names', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [
+        pointFeature('p1', { category: 'a & b' }),
+        pointFeature('p2', { category: 'c < d' }),
+      ],
+    };
+    const kml = toKML(fc, { groupBy: (p) => String(p.category) });
+    expect(kml).toContain('<Folder><name>a &amp; b</name>');
+    expect(kml).toContain('<Folder><name>c &lt; d</name>');
+    expect(kml).not.toContain('<name>a & b</name>');
+    expect(kml).not.toContain('<name>c < d</name>');
+  });
+
+  it('does not emit folders for an empty collection', () => {
+    const kml = toKML(
+      { type: 'FeatureCollection', features: [] },
+      {
+        groupBy: () => 'x',
+      }
+    );
+    expect(countFolders(kml)).toBe(0);
+  });
+
+  it('deduplicates styles across folders', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [
+        pointFeature('p1', { category: 'a', 'marker-color': '#ff0000' }),
+        pointFeature('p2', { category: 'b', 'marker-color': '#ff0000' }),
+      ],
+    };
+    const kml = toKML(fc, {
+      simplestyle: true,
+      groupBy: (p) => String(p.category),
+    });
+    expect(countFolders(kml)).toBe(2);
+    expect(kml.match(/<Style /g)?.length ?? 0).toBe(1);
+  });
+});
+
 describe('iconBaseUrl', () => {
   it('uses the mapbox default when not provided', () => {
     const kml = toKML(file('simplestyle_point'), { simplestyle: true });
