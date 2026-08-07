@@ -264,6 +264,23 @@ describe('groupBy folders', () => {
     expect(countFolders(kml)).toBe(2);
     expect(kml.match(/<Style /g)?.length ?? 0).toBe(1);
   });
+
+  it('emits shared styles at the Document level, outside folders', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [
+        pointFeature('p1', { category: 'a', 'marker-color': '#ff0000' }),
+        pointFeature('p2', { category: 'b', 'marker-color': '#ff0000' }),
+      ],
+    };
+    const kml = toKML(fc, {
+      simplestyle: true,
+      groupBy: (p) => String(p.category),
+    });
+    const stylePos = kml.indexOf('<Style id=');
+    expect(stylePos).toBeGreaterThan(kml.indexOf('<Document>'));
+    expect(stylePos).toBeLessThan(kml.indexOf('<Folder>'));
+  });
 });
 
 describe('iconBaseUrl', () => {
