@@ -12,9 +12,15 @@ import {
 } from './helpers/style';
 import { tag } from './lib/strxml';
 import esc from './lib/xml-escape';
-import type { Feature, GeoJSONInput, Properties } from './types';
+import type {
+  Feature,
+  FeatureCollection,
+  GeoJSONInput,
+  Properties,
+} from './types';
 
 const DEFAULT_ICON_BASE_URL = 'https://api.tiles.mapbox.com/v3/marker/';
+const DEFAULT_UNGROUPED_FOLDER_NAME = 'Uncategorized';
 
 export interface KMLOptions {
   documentName?: string;
@@ -24,6 +30,8 @@ export interface KMLOptions {
   simplestyle?: boolean;
   iconBaseUrl?: string;
   timestamp?: string;
+  groupBy?: (properties: Properties) => string | null | undefined;
+  ungroupedFolderName?: string;
 }
 
 function documentName(options: KMLOptions): string {
@@ -72,7 +80,7 @@ function extendeddata(_: Properties): string {
   return tag('ExtendedData', {}, pairs(_).map(data).join(''));
 }
 
-function feature(options: KMLOptions, styleHashesArray: string[]) {
+function feature(options: KMLOptions, styles: Record<string, string>) {
   return (_: Feature): string => {
     const geojsonGeometry = _.geometry;
     if (!_.properties || !geojsonGeometry || !geometry.valid(geojsonGeometry))
@@ -80,21 +88,17 @@ function feature(options: KMLOptions, styleHashesArray: string[]) {
     var geometryString = geometry.any(geojsonGeometry);
     if (!geometryString) return '';
 
-    var styleDefinition = '',
-      styleReference = '',
+    var styleReference = '',
       styleHash: string;
     if (options.simplestyle) {
       styleHash = hashStyle(_.properties);
       if (styleHash) {
         if (geometry.isPoint(geojsonGeometry) && hasMarkerStyle(_.properties)) {
-          if (styleHashesArray.indexOf(styleHash) === -1) {
-            styleDefinition = markerStyle(
-              options.iconBaseUrl ?? DEFAULT_ICON_BASE_URL,
-              _.properties,
-              styleHash
-            );
-            styleHashesArray.push(styleHash);
-          }
+          styles[styleHash] ??= markerStyle(
+            options.iconBaseUrl ?? DEFAULT_ICON_BASE_URL,
+            _.properties,
+            styleHash
+          );
           styleReference = tag('styleUrl', `#${styleHash}`);
           removeMarkerStyle(_.properties);
         } else if (
@@ -102,10 +106,7 @@ function feature(options: KMLOptions, styleHashesArray: string[]) {
             geometry.isLine(geojsonGeometry)) &&
           hasPolygonAndLineStyle(_.properties)
         ) {
-          if (styleHashesArray.indexOf(styleHash) === -1) {
-            styleDefinition = polygonAndLineStyle(_.properties, styleHash);
-            styleHashesArray.push(styleHash);
-          }
+          styles[styleHash] ??= polygonAndLineStyle(_.properties, styleHash);
           styleReference = tag('styleUrl', `#${styleHash}`);
           removePolygonAndLineStyle(_.properties);
         }
@@ -115,36 +116,82 @@ function feature(options: KMLOptions, styleHashesArray: string[]) {
 
     var attributes: Record<string, string> = {};
     if (_.id) attributes.id = _.id.toString();
-    return (
-      styleDefinition +
-      tag(
-        'Placemark',
-        attributes,
-        name(_.properties, options) +
-          description(_.properties, options) +
-          extendeddata(_.properties) +
-          timestamp(_.properties, options) +
-          geometryString +
-          styleReference
-      )
+    return tag(
+      'Placemark',
+      attributes,
+      name(_.properties, options) +
+        description(_.properties, options) +
+        extendeddata(_.properties) +
+        timestamp(_.properties, options) +
+        geometryString +
+        styleReference
     );
   };
 }
 
+function folder(
+  features: Feature[],
+  folderName: string,
+  options: KMLOptions,
+  styles: Record<string, string>
+): string {
+  const content = features.map(feature(options, styles)).join('');
+  if (!content) return '';
+  return tag('Folder', tag('name', esc(folderName) ?? '') + content);
+}
+
+function collection(
+  _: FeatureCollection,
+  options: KMLOptions,
+  styles: Record<string, string>
+): string {
+  const groups = new Map<string, Feature[]>();
+
+  for (const f of _.features ?? []) {
+    const groupName =
+      options.groupBy?.(f.properties ?? {}) ??
+      options.ungroupedFolderName ??
+      DEFAULT_UNGROUPED_FOLDER_NAME;
+    const group = groups.get(groupName) ?? [];
+    group.push(f);
+    groups.set(groupName, group);
+  }
+
+  let content = '';
+  for (const [groupName, features] of groups) {
+    content += folder(features, groupName, options, styles);
+  }
+
+  return content;
+}
+
 function root(_: GeoJSONInput, options: KMLOptions): string {
   if (!_.type) return '';
-  var styleHashesArray: string[] = [];
+  const styles: Record<string, string> = {};
+  const emitted = new Set<string>();
+
+  const emit = (f: Feature): string => {
+    const placemark = feature(options, styles)(f);
+    let styleDefinitions = '';
+    for (const [hash, definition] of Object.entries(styles)) {
+      if (emitted.has(hash)) continue;
+      emitted.add(hash);
+      styleDefinitions += definition;
+    }
+    return styleDefinitions + placemark;
+  };
 
   switch (_.type) {
     case 'FeatureCollection':
-      return _.features?.map(feature(options, styleHashesArray)).join('') ?? '';
+      if (options.groupBy) {
+        const content = collection(_, options, styles);
+        return Object.values(styles).join('') + content;
+      }
+      return (_.features ?? []).map(emit).join('');
     case 'Feature':
-      return feature(options, styleHashesArray)(_);
+      return emit(_);
     default:
-      return feature(
-        options,
-        styleHashesArray
-      )({
+      return emit({
         type: 'Feature',
         geometry: _,
         properties: {},
@@ -160,6 +207,7 @@ const defaultOptions: KMLOptions = {
   simplestyle: false,
   iconBaseUrl: DEFAULT_ICON_BASE_URL,
   timestamp: 'timestamp',
+  ungroupedFolderName: DEFAULT_UNGROUPED_FOLDER_NAME,
 };
 
 /**
