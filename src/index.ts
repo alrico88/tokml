@@ -147,7 +147,7 @@ function collection(
 ): string {
   const groups = new Map<string, Feature[]>();
 
-  for (const f of _.features) {
+  for (const f of _.features ?? []) {
     const groupName =
       options.groupBy?.(f.properties ?? {}) ??
       options.ungroupedFolderName ??
