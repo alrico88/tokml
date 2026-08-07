@@ -11,6 +11,7 @@
     }
   },
   "types": "./dist/index.d.ts",
+  "packageManager": "pnpm@11.20.0",
   "scripts": {
     "build": "rslib",
     "dev": "rslib --watch",
