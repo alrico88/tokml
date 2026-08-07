@@ -175,7 +175,7 @@ describe('groupBy folders', () => {
     expect(kml).not.toContain('Uncategorized');
   });
 
-  it('leaves ungrouped features loose in the Document when ungroupedFolderName is undefined', () => {
+  it('treats an explicit undefined ungroupedFolderName as the default', () => {
     const fc = {
       type: 'FeatureCollection',
       features: [pointFeature('p1', { category: 'x' }), pointFeature('p2', {})],
@@ -184,9 +184,8 @@ describe('groupBy folders', () => {
       groupBy: (p) => p.category as string | undefined,
       ungroupedFolderName: undefined,
     });
-    expect(countFolders(kml)).toBe(1);
-    expect(kml).not.toContain('Uncategorized');
-    expect(kml.slice(kml.indexOf('</Folder>'))).toContain('<name>p2</name>');
+    expect(countFolders(kml)).toBe(2);
+    expect(kml).toContain('<Folder><name>Uncategorized</name>');
   });
 
   it('supports a complex groupBy callback combining properties', () => {

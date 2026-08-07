@@ -156,36 +156,20 @@ function collection(
   styleHashesArray: string[]
 ): string {
   const groups = new Map<string, Feature[]>();
-  const ungrouped: Feature[] = [];
 
-  for (const feature of _.features ?? []) {
-    const groupName = options.groupBy?.(feature.properties ?? {});
-    if (groupName === null || groupName === undefined) {
-      ungrouped.push(feature);
-    } else {
-      const group = groups.get(groupName) ?? [];
-      group.push(feature);
-      groups.set(groupName, group);
-    }
+  for (const feature of _.features) {
+    const groupName =
+      options.groupBy?.(feature.properties ?? {}) ??
+      options.ungroupedFolderName ??
+      DEFAULT_UNGROUPED_FOLDER_NAME;
+    const group = groups.get(groupName) ?? [];
+    group.push(feature);
+    groups.set(groupName, group);
   }
 
   let content = '';
   for (const [groupName, features] of groups) {
     content += folder(features, groupName, options, styleHashesArray);
-  }
-
-  const ungroupedFolderName = options.ungroupedFolderName;
-  if (ungrouped.length) {
-    if (ungroupedFolderName !== undefined) {
-      content += folder(
-        ungrouped,
-        ungroupedFolderName,
-        options,
-        styleHashesArray
-      );
-    } else {
-      content += ungrouped.map(feature(options, styleHashesArray)).join('');
-    }
   }
 
   return content;
@@ -222,14 +206,8 @@ const defaultOptions: KMLOptions = {
   simplestyle: false,
   iconBaseUrl: DEFAULT_ICON_BASE_URL,
   timestamp: 'timestamp',
+  ungroupedFolderName: DEFAULT_UNGROUPED_FOLDER_NAME,
 };
-
-function ungroupedFolderName(options?: KMLOptions): string | undefined {
-  if (options !== undefined && 'ungroupedFolderName' in options) {
-    return options.ungroupedFolderName;
-  }
-  return DEFAULT_UNGROUPED_FOLDER_NAME;
-}
 
 /**
  * Convert GeoJSON to KML
@@ -240,10 +218,7 @@ function ungroupedFolderName(options?: KMLOptions): string | undefined {
  * @return {string}
  */
 export function toKML(geojson: GeoJSONInput, options?: KMLOptions): string {
-  const filledOptions: KMLOptions = {
-    ...defu(options, defaultOptions),
-    ungroupedFolderName: ungroupedFolderName(options),
-  };
+  const filledOptions = defu(options, defaultOptions);
 
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +
