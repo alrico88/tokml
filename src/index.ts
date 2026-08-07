@@ -1,47 +1,62 @@
-import esc from './lib/xml-escape';
-import { tag } from './lib/strxml';
+import { defu } from 'defu';
+import { pairs } from './helpers/general';
 import { geometry } from './helpers/geometry';
 import {
-  markerStyle,
   hashStyle,
-  removeMarkerStyle,
-  hasPolygonAndLineStyle,
-  polygonAndLineStyle,
   hasMarkerStyle,
+  hasPolygonAndLineStyle,
+  markerStyle,
+  polygonAndLineStyle,
+  removeMarkerStyle,
   removePolygonAndLineStyle,
 } from './helpers/style';
-import { pairs } from './helpers/general';
-import { defu } from 'defu';
+import { tag } from './lib/strxml';
+import esc from './lib/xml-escape';
+import type { Feature, GeoJSONInput, Properties } from './types';
 
-function documentName(options) {
+const DEFAULT_ICON_BASE_URL = 'https://api.tiles.mapbox.com/v3/marker/';
+
+export interface KMLOptions {
+  documentName?: string;
+  documentDescription?: string;
+  name?: string;
+  description?: string;
+  simplestyle?: boolean;
+  iconBaseUrl?: string;
+  timestamp?: string;
+}
+
+function documentName(options: KMLOptions): string {
   return options.documentName !== undefined
     ? tag('name', options.documentName)
     : '';
 }
 
-function documentDescription(options) {
+function documentDescription(options: KMLOptions): string {
   return options.documentDescription !== undefined
     ? tag('description', options.documentDescription)
     : '';
 }
-function name(_, options) {
-  return _[options.name] ? tag('name', esc(_[options.name])) : '';
+
+function name(properties: Properties, options: KMLOptions): string {
+  const key = options.name ?? 'name';
+  return properties[key] ? tag('name', esc(properties[key]) ?? '') : '';
 }
 
-function description(_, options) {
-  return _[options.description]
-    ? tag('description', esc(_[options.description]))
-    : '';
+function description(properties: Properties, options: KMLOptions): string {
+  const key = options.description ?? 'description';
+  return properties[key] ? tag('description', esc(properties[key]) ?? '') : '';
 }
 
-function timestamp(_, options) {
-  return _[options.timestamp]
-    ? tag('TimeStamp', tag('when', esc(_[options.timestamp])))
+function timestamp(properties: Properties, options: KMLOptions): string {
+  const key = options.timestamp ?? 'timestamp';
+  return properties[key]
+    ? tag('TimeStamp', tag('when', esc(properties[key]) ?? ''))
     : '';
 }
 
 // ## Data
-function data(_) {
+function data(_: [string, unknown]): string {
   return tag(
     'Data',
     { name: _[0] },
@@ -53,48 +68,52 @@ function data(_) {
   );
 }
 
-function extendeddata(_) {
+function extendeddata(_: Properties): string {
   return tag('ExtendedData', {}, pairs(_).map(data).join(''));
 }
 
-function feature(options, styleHashesArray) {
-  return function (_) {
-    if (!_.properties || !geometry.valid(_.geometry)) return '';
-    var geometryString = geometry.any(_.geometry);
+function feature(options: KMLOptions, styleHashesArray: string[]) {
+  return (_: Feature): string => {
+    const geojsonGeometry = _.geometry;
+    if (!_.properties || !geojsonGeometry || !geometry.valid(geojsonGeometry))
+      return '';
+    var geometryString = geometry.any(geojsonGeometry);
     if (!geometryString) return '';
 
     var styleDefinition = '',
-      styleReference = '';
+      styleReference = '',
+      styleHash: string;
     if (options.simplestyle) {
-      var styleHash = hashStyle(_.properties);
+      styleHash = hashStyle(_.properties);
       if (styleHash) {
-        if (geometry.isPoint(_.geometry) && hasMarkerStyle(_.properties)) {
+        if (geometry.isPoint(geojsonGeometry) && hasMarkerStyle(_.properties)) {
           if (styleHashesArray.indexOf(styleHash) === -1) {
             styleDefinition = markerStyle(
-              options.iconBaseUrl,
+              options.iconBaseUrl ?? DEFAULT_ICON_BASE_URL,
               _.properties,
               styleHash
             );
             styleHashesArray.push(styleHash);
           }
-          styleReference = tag('styleUrl', '#' + styleHash);
+          styleReference = tag('styleUrl', `#${styleHash}`);
           removeMarkerStyle(_.properties);
         } else if (
-          (geometry.isPolygon(_.geometry) || geometry.isLine(_.geometry)) &&
+          (geometry.isPolygon(geojsonGeometry) ||
+            geometry.isLine(geojsonGeometry)) &&
           hasPolygonAndLineStyle(_.properties)
         ) {
           if (styleHashesArray.indexOf(styleHash) === -1) {
             styleDefinition = polygonAndLineStyle(_.properties, styleHash);
             styleHashesArray.push(styleHash);
           }
-          styleReference = tag('styleUrl', '#' + styleHash);
+          styleReference = tag('styleUrl', `#${styleHash}`);
           removePolygonAndLineStyle(_.properties);
         }
         // Note that style of GeometryCollection / MultiGeometry is not supported
       }
     }
 
-    var attributes = {};
+    var attributes: Record<string, string> = {};
     if (_.id) attributes.id = _.id.toString();
     return (
       styleDefinition +
@@ -112,14 +131,13 @@ function feature(options, styleHashesArray) {
   };
 }
 
-function root(_, options) {
+function root(_: GeoJSONInput, options: KMLOptions): string {
   if (!_.type) return '';
-  var styleHashesArray = [];
+  var styleHashesArray: string[] = [];
 
   switch (_.type) {
     case 'FeatureCollection':
-      if (!_.features) return '';
-      return _.features.map(feature(options, styleHashesArray)).join('');
+      return _.features?.map(feature(options, styleHashesArray)).join('') ?? '';
     case 'Feature':
       return feature(options, styleHashesArray)(_);
     default:
@@ -134,24 +152,13 @@ function root(_, options) {
   }
 }
 
-/**
- * @typedef KMLOptions
- * @property {string} [documentName]
- * @property {string} [documentDescription]
- * @property {string} [name="name"]
- * @property {string} [description="description"]
- * @property {string} [simplestyle=false]
- * @property {string} [iconBaseUrl="https://api.tiles.mapbox.com/v3/marker/"]
- * @property {string} [timestamp="timestamp"]
- */
-
-const defaultOptions = {
+const defaultOptions: KMLOptions = {
   documentName: undefined,
   documentDescription: undefined,
   name: 'name',
   description: 'description',
   simplestyle: false,
-  iconBaseUrl: 'https://api.tiles.mapbox.com/v3/marker/',
+  iconBaseUrl: DEFAULT_ICON_BASE_URL,
   timestamp: 'timestamp',
 };
 
@@ -163,7 +170,7 @@ const defaultOptions = {
  * @param {KMLOptions} options
  * @return {string}
  */
-export function toKML(geojson, options) {
+export function toKML(geojson: GeoJSONInput, options?: KMLOptions): string {
   const filledOptions = defu(options, defaultOptions);
 
   return (
