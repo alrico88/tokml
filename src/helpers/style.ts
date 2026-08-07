@@ -1,6 +1,10 @@
 import { tag } from '../lib/strxml';
+import type { Properties } from '../types';
 
-export function hexToKmlColor(hexColor, opacity) {
+export function hexToKmlColor(
+  hexColor: string | undefined,
+  opacity: number | undefined
+): string {
   if (typeof hexColor !== 'string') return '';
 
   hexColor = hexColor.replace('#', '').toLowerCase();
@@ -25,17 +29,17 @@ export function hexToKmlColor(hexColor, opacity) {
   if (typeof opacity === 'number' && opacity >= 0.0 && opacity <= 1.0) {
     o = (opacity * 255).toString(16);
     if (o.indexOf('.') > -1) o = o.substr(0, o.indexOf('.'));
-    if (o.length < 2) o = '0' + o;
+    if (o.length < 2) o = `0${o}`;
   }
 
   return o + b + g + r;
 }
 
-export function hasMarkerStyle(_) {
+export function hasMarkerStyle(_: Properties): boolean {
   return !!(_['marker-size'] || _['marker-symbol'] || _['marker-color']);
 }
 
-export function removeMarkerStyle(_) {
+export function removeMarkerStyle(_: Properties): void {
   delete _['marker-size'];
   delete _['marker-symbol'];
   delete _['marker-color'];
@@ -53,15 +57,19 @@ const iconSize = tag(
   ''
 );
 
-export function iconUrl(baseUrl, _) {
+export function iconUrl(baseUrl: string, _: Properties): string {
   var size = _['marker-size'] || 'medium',
-    symbol = _['marker-symbol'] ? '-' + _['marker-symbol'] : '',
+    symbol = _['marker-symbol'] ? `-${_['marker-symbol']}` : '',
     color = (_['marker-color'] || '7e7e7e').replace('#', '');
 
-  return baseUrl + 'pin-' + size.charAt(0) + symbol + '+' + color + '.png';
+  return `${baseUrl}pin-${size.charAt(0)}${symbol}+${color}.png`;
 }
 
-export function markerStyle(baseUrl, _, styleHash) {
+export function markerStyle(
+  baseUrl: string,
+  _: Properties,
+  styleHash: string
+): string {
   return tag(
     'Style',
     { id: styleHash },
@@ -70,7 +78,7 @@ export function markerStyle(baseUrl, _, styleHash) {
 }
 
 // ## Polygon and Line style
-export function hasPolygonAndLineStyle(_) {
+export function hasPolygonAndLineStyle(_: Properties): boolean {
   for (var key in _) {
     if (
       {
@@ -83,36 +91,30 @@ export function hasPolygonAndLineStyle(_) {
     )
       return true;
   }
+  return false;
 }
 
-export function removePolygonAndLineStyle(_) {
-  delete _['stroke'];
+export function removePolygonAndLineStyle(_: Properties): void {
+  delete _.stroke;
   delete _['stroke-opacity'];
   delete _['stroke-width'];
-  delete _['fill'];
+  delete _.fill;
   delete _['fill-opacity'];
 }
 
-export function polygonAndLineStyle(_, styleHash) {
+export function polygonAndLineStyle(_: Properties, styleHash: string): string {
   var lineStyle = tag(
     'LineStyle',
-    tag(
-      'color',
-      hexToKmlColor(_['stroke'], _['stroke-opacity']) || 'ff555555'
-    ) +
+    tag('color', hexToKmlColor(_.stroke, _['stroke-opacity']) || 'ff555555') +
       tag('width', {}, _['stroke-width'] === undefined ? 2 : _['stroke-width'])
   );
 
   var polyStyle = '';
 
-  if (_['fill'] || _['fill-opacity']) {
+  if (_.fill || _['fill-opacity']) {
     polyStyle = tag(
       'PolyStyle',
-      tag(
-        'color',
-        {},
-        hexToKmlColor(_['fill'], _['fill-opacity']) || '88555555'
-      )
+      tag('color', {}, hexToKmlColor(_.fill, _['fill-opacity']) || '88555555')
     );
   }
 
@@ -120,21 +122,21 @@ export function polygonAndLineStyle(_, styleHash) {
 }
 
 // ## Style helpers
-export function hashStyle(_) {
+export function hashStyle(_: Properties): string {
   var hash = '';
 
-  if (_['marker-symbol']) hash = hash + 'ms' + _['marker-symbol'];
+  if (_['marker-symbol']) hash = `${hash}ms${_['marker-symbol']}`;
   if (_['marker-color'])
-    hash = hash + 'mc' + _['marker-color'].replace('#', '');
-  if (_['marker-size']) hash = hash + 'ms' + _['marker-size'];
-  if (_['stroke']) hash = hash + 's' + _['stroke'].replace('#', '');
+    hash = `${hash}mc${_['marker-color'].replace('#', '')}`;
+  if (_['marker-size']) hash = `${hash}ms${_['marker-size']}`;
+  if (_.stroke) hash = `${hash}s${_.stroke.replace('#', '')}`;
   if (_['stroke-width'])
-    hash = hash + 'sw' + _['stroke-width'].toString().replace('.', '');
+    hash = `${hash}sw${_['stroke-width'].toString().replace('.', '')}`;
   if (_['stroke-opacity'])
-    hash = hash + 'mo' + _['stroke-opacity'].toString().replace('.', '');
-  if (_['fill']) hash = hash + 'f' + _['fill'].replace('#', '');
+    hash = `${hash}mo${_['stroke-opacity'].toString().replace('.', '')}`;
+  if (_.fill) hash = `${hash}f${_.fill.replace('#', '')}`;
   if (_['fill-opacity'])
-    hash = hash + 'fo' + _['fill-opacity'].toString().replace('.', '');
+    hash = `${hash}fo${_['fill-opacity'].toString().replace('.', '')}`;
 
   return hash;
 }

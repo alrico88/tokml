@@ -2,18 +2,18 @@
 
 import esc from './xml-escape';
 
+type Attributes = Record<string, string>;
+
 /**
  * @param {array} _ an array of attributes
  * @returns {string}
  */
-export function attr(attributes) {
+export function attr(attributes: Attributes): string {
   if (!Object.keys(attributes).length) return '';
   return (
     ' ' +
     Object.keys(attributes)
-      .map(function (key) {
-        return key + '="' + esc(attributes[key]) + '"';
-      })
+      .map((key) => `${key}="${esc(attributes[key])}"`)
       .join(' ')
   );
 }
@@ -23,9 +23,11 @@ export function attr(attributes) {
  * @param {array} attributes array of pairs
  * @returns {string}
  */
-export function tagClose(el, attributes) {
-  return '<' + el + attr(attributes) + '/>';
+export function tagClose(el: string, attributes: Attributes): string {
+  return `<${el}${attr(attributes)}/>`;
 }
+
+type TagContents = string | number | Array<string | number>;
 
 /**
  * @param {string} el element name
@@ -33,19 +35,16 @@ export function tagClose(el, attributes) {
  * @param {array} attributes array of pairs
  * @returns {string}
  */
-export function tag(el, attributes, contents) {
+export function tag(
+  el: string,
+  attributes: Attributes | string,
+  contents?: TagContents
+): string {
   if (Array.isArray(attributes) || typeof attributes === 'string') {
     contents = attributes;
     attributes = {};
   }
   if (Array.isArray(contents))
-    contents =
-      '\n' +
-      contents
-        .map(function (content) {
-          return '  ' + content;
-        })
-        .join('\n') +
-      '\n';
-  return '<' + el + attr(attributes) + '>' + contents + '</' + el + '>';
+    contents = `\n${contents.map((content) => `  ${content}`).join('\n')}\n`;
+  return `<${el}${attr(attributes)}>${contents}</${el}>`;
 }
