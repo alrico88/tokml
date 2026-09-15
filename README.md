@@ -88,3 +88,4 @@ for the full document.
 
 - `simplestyle`: set to `true` to convert simplestyle-spec styles into KML styles
 - `iconBaseUrl`: Mapbox deprecated their icons API (pointing to "https://api.tiles.mapbox.com/v3/marker/") so you can customize it (e.g.: "https://my-icon-api.com/icons/"). This was the motive for this fork.
+- `icon-href`: set this feature property to an absolute icon URL to use it directly instead of the synthesized marker URL.

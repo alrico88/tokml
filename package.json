@@ -45,6 +45,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@sindresorhus/is": "^8.1.0",
     "defu": "^6.1.7"
   }
 }

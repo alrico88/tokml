@@ -5,6 +5,7 @@ import type {
 } from 'geojson';
 
 export interface Properties extends Record<string, unknown> {
+  'icon-href'?: string;
   'marker-size'?: string;
   'marker-symbol'?: string;
   'marker-color'?: string;
