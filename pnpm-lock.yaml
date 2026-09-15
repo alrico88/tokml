@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@sindresorhus/is':
+        specifier: ^8.1.0
+        version: 8.1.0
       defu:
         specifier: ^6.1.7
         version: 6.1.7
@@ -365,6 +368,10 @@ packages:
         optional: true
       '@swc/helpers':
         optional: true
+
+  '@sindresorhus/is@8.1.0':
+    resolution: {integrity: sha512-2SX/1jW6CIMAiebvVv5ZInoCEuWQmMyBoJXXGC6Vjakjp/fpxP5eHs7/V6WKuPEIbuK06+VpjH+vjLQhr98rDQ==}
+    engines: {node: '>=22'}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -929,6 +936,8 @@ snapshots:
       '@rspack/binding': 2.1.8
     optionalDependencies:
       '@swc/helpers': 0.5.23
+
+  '@sindresorhus/is@8.1.0': {}
 
   '@standard-schema/spec@1.1.0': {}
 

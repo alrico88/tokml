@@ -2,11 +2,12 @@ import { defu } from 'defu';
 import { pairs } from './helpers/general';
 import { geometry } from './helpers/geometry';
 import {
-  hashStyle,
   hasMarkerStyle,
   hasPolygonAndLineStyle,
+  markerIconHref,
   markerStyle,
   polygonAndLineStyle,
+  polygonAndLineStyleKey,
   removeMarkerStyle,
   removePolygonAndLineStyle,
 } from './helpers/style';
@@ -18,6 +19,13 @@ import type {
   GeoJSONInput,
   Properties,
 } from './types';
+
+interface StyleDefinition {
+  id: string;
+  xml: string;
+}
+
+type Styles = Map<string, StyleDefinition>;
 
 const DEFAULT_ICON_BASE_URL = 'https://api.tiles.mapbox.com/v3/marker/';
 const DEFAULT_UNGROUPED_FOLDER_NAME = 'Uncategorized';
@@ -80,38 +88,50 @@ function extendeddata(_: Properties): string {
   return tag('ExtendedData', {}, pairs(_).map(data).join(''));
 }
 
-function feature(options: KMLOptions, styles: Record<string, string>) {
+function feature(options: KMLOptions, styles: Styles) {
   return (_: Feature): string => {
     const geojsonGeometry = _.geometry;
     if (!_.properties || !geojsonGeometry || !geometry.valid(geojsonGeometry))
       return '';
+    const properties = _.properties;
     var geometryString = geometry.any(geojsonGeometry);
     if (!geometryString) return '';
 
-    var styleReference = '',
-      styleHash: string;
+    let styleReference = '';
     if (options.simplestyle) {
-      styleHash = hashStyle(_.properties);
-      if (styleHash) {
-        if (geometry.isPoint(geojsonGeometry) && hasMarkerStyle(_.properties)) {
-          styles[styleHash] ??= markerStyle(
-            options.iconBaseUrl ?? DEFAULT_ICON_BASE_URL,
-            _.properties,
-            styleHash
-          );
-          styleReference = tag('styleUrl', `#${styleHash}`);
-          removeMarkerStyle(_.properties);
-        } else if (
-          (geometry.isPolygon(geojsonGeometry) ||
-            geometry.isLine(geojsonGeometry)) &&
-          hasPolygonAndLineStyle(_.properties)
-        ) {
-          styles[styleHash] ??= polygonAndLineStyle(_.properties, styleHash);
-          styleReference = tag('styleUrl', `#${styleHash}`);
-          removePolygonAndLineStyle(_.properties);
+      let styleKey: string | undefined;
+      let renderStyle: ((id: string) => string) | undefined;
+      let removeStyle: (() => void) | undefined;
+
+      if (geometry.isPoint(geojsonGeometry) && hasMarkerStyle(properties)) {
+        const baseUrl = options.iconBaseUrl ?? DEFAULT_ICON_BASE_URL;
+        styleKey = `marker:${markerIconHref(baseUrl, properties)}`;
+        renderStyle = (id) => markerStyle(baseUrl, properties, id);
+        removeStyle = () => removeMarkerStyle(properties);
+      } else if (
+        (geometry.isPolygon(geojsonGeometry) ||
+          geometry.isLine(geojsonGeometry)) &&
+        hasPolygonAndLineStyle(properties)
+      ) {
+        const geometryStyleKey = polygonAndLineStyleKey(properties);
+        if (geometryStyleKey) {
+          styleKey = `geometry:${geometryStyleKey}`;
+          renderStyle = (id) => polygonAndLineStyle(properties, id);
+          removeStyle = () => removePolygonAndLineStyle(properties);
         }
-        // Note that style of GeometryCollection / MultiGeometry is not supported
       }
+
+      if (styleKey && renderStyle) {
+        let style = styles.get(styleKey);
+        if (!style) {
+          const id = `style-${styles.size + 1}`;
+          style = { id, xml: renderStyle(id) };
+          styles.set(styleKey, style);
+        }
+        styleReference = tag('styleUrl', `#${style.id}`);
+        removeStyle?.();
+      }
+      // Note that style of GeometryCollection / MultiGeometry is not supported
     }
 
     var attributes: Record<string, string> = {};
@@ -119,10 +139,10 @@ function feature(options: KMLOptions, styles: Record<string, string>) {
     return tag(
       'Placemark',
       attributes,
-      name(_.properties, options) +
-        description(_.properties, options) +
-        extendeddata(_.properties) +
-        timestamp(_.properties, options) +
+      name(properties, options) +
+        description(properties, options) +
+        extendeddata(properties) +
+        timestamp(properties, options) +
         geometryString +
         styleReference
     );
@@ -133,7 +153,7 @@ function folder(
   features: Feature[],
   folderName: string,
   options: KMLOptions,
-  styles: Record<string, string>
+  styles: Styles
 ): string {
   const content = features.map(feature(options, styles)).join('');
   if (!content) return '';
@@ -143,7 +163,7 @@ function folder(
 function collection(
   _: FeatureCollection,
   options: KMLOptions,
-  styles: Record<string, string>
+  styles: Styles
 ): string {
   const groups = new Map<string, Feature[]>();
 
@@ -167,16 +187,16 @@ function collection(
 
 function root(_: GeoJSONInput, options: KMLOptions): string {
   if (!_.type) return '';
-  const styles: Record<string, string> = {};
+  const styles: Styles = new Map();
   const emitted = new Set<string>();
 
   const emit = (f: Feature): string => {
     const placemark = feature(options, styles)(f);
     let styleDefinitions = '';
-    for (const [hash, definition] of Object.entries(styles)) {
-      if (emitted.has(hash)) continue;
-      emitted.add(hash);
-      styleDefinitions += definition;
+    for (const { id, xml } of styles.values()) {
+      if (emitted.has(id)) continue;
+      emitted.add(id);
+      styleDefinitions += xml;
     }
     return styleDefinitions + placemark;
   };
@@ -185,7 +205,7 @@ function root(_: GeoJSONInput, options: KMLOptions): string {
     case 'FeatureCollection':
       if (options.groupBy) {
         const content = collection(_, options, styles);
-        return Object.values(styles).join('') + content;
+        return Array.from(styles.values(), ({ xml }) => xml).join('') + content;
       }
       return (_.features ?? []).map(emit).join('');
     case 'Feature':

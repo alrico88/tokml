@@ -306,6 +306,108 @@ describe('iconBaseUrl', () => {
   });
 });
 
+describe('icon-href', () => {
+  function pointFeature(iconHref: string): Record<string, unknown> {
+    return {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [0, 0] },
+      properties: { 'icon-href': iconHref },
+    };
+  }
+
+  it('uses the feature icon-href verbatim in the marker style', () => {
+    const iconHref = 'https://example.com/pins/mini/movistar.png';
+    const kml = toKML(pointFeature(iconHref), { simplestyle: true });
+
+    expect(kml).toContain(`<Icon><href>${iconHref}</href></Icon>`);
+    expect(kml).toContain('<Style id="style-1">');
+    expect(kml).toContain('<styleUrl>#style-1</styleUrl>');
+    expect(kml).not.toContain('<Data name="icon-href">');
+  });
+
+  it('keeps the style id and reference XML-safe for URLs with reserved characters', () => {
+    const iconHref = 'https://cdn.example.com/pins/mini/movistar.png?t=a&v=3';
+    const kml = toKML(pointFeature(iconHref), { simplestyle: true });
+    const styleId = kml.match(/<Style id="([^"]+)"/)?.[1];
+    const styleUrl = kml.match(/<styleUrl>#([^<]+)<\/styleUrl>/)?.[1];
+
+    expect(styleId).toBeDefined();
+    expect(styleId).toBe(styleUrl);
+    expect(styleId).not.toMatch(/[&<>"'/:?]/);
+    expect(kml).toContain(
+      '<Icon><href>https://cdn.example.com/pins/mini/movistar.png?t=a&amp;v=3</href></Icon>'
+    );
+  });
+
+  it('escapes XML characters in icon-href', () => {
+    const kml = toKML(pointFeature('https://example.com/pins/a?x=1&y=2'), {
+      simplestyle: true,
+    });
+
+    expect(kml).toContain(
+      '<Icon><href>https://example.com/pins/a?x=1&amp;y=2</href></Icon>'
+    );
+  });
+
+  it('creates distinct styles for distinct icon-href values', () => {
+    const kml = toKML(
+      {
+        type: 'FeatureCollection',
+        features: [
+          pointFeature('https://example.com/pins/a.png'),
+          pointFeature('https://example.com/pins/b.png'),
+        ],
+      },
+      { simplestyle: true }
+    );
+
+    expect(kml.match(/<Style id=/g)?.length).toBe(2);
+    expect(kml).toContain('https://example.com/pins/a.png');
+    expect(kml).toContain('https://example.com/pins/b.png');
+  });
+
+  it('deduplicates equal icon-href styles regardless of ignored marker properties', () => {
+    const iconHref = 'https://example.com/pins/a.png';
+    const first = pointFeature(iconHref);
+    const second = pointFeature(iconHref);
+    (first.properties as Record<string, unknown>)['marker-color'] = '#ff0000';
+    (second.properties as Record<string, unknown>)['marker-color'] = '#0000ff';
+
+    const kml = toKML(
+      { type: 'FeatureCollection', features: [first, second] },
+      { simplestyle: true }
+    );
+
+    expect(kml.match(/<Style id=/g)?.length).toBe(1);
+    expect(kml.match(/<styleUrl>#style-1<\/styleUrl>/g)?.length).toBe(2);
+  });
+
+  it('keeps the synthesized icon URL for marker properties', () => {
+    const kml = toKML(
+      {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [0, 0] },
+        properties: { 'marker-symbol': 'star', 'marker-color': '#ff0000' },
+      },
+      { simplestyle: true }
+    );
+
+    expect(kml).toContain(
+      '<Icon><href>https://api.tiles.mapbox.com/v3/marker/pin-m-star+ff0000.png</href></Icon>'
+    );
+  });
+
+  it('does not turn icon-href into a style when simplestyle is off', () => {
+    const iconHref = 'https://example.com/pins/custom.png';
+    const kml = toKML(pointFeature(iconHref));
+
+    expect(kml).not.toContain('<Style');
+    expect(kml).toContain(
+      `<Data name="icon-href"><value>${iconHref}</value></Data>`
+    );
+  });
+});
+
 describe('simplestyle hex to kml color conversion', () => {
   function testColor(
     inputColor: string | null,

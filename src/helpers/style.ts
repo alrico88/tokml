@@ -1,11 +1,13 @@
+import is from '@sindresorhus/is';
 import { tag } from '../lib/strxml';
+import esc from '../lib/xml-escape';
 import type { Properties } from '../types';
 
 export function hexToKmlColor(
   hexColor: string | undefined,
   opacity: number | undefined
 ): string {
-  if (typeof hexColor !== 'string') return '';
+  if (!is.string(hexColor)) return '';
 
   hexColor = hexColor.replace('#', '').toLowerCase();
 
@@ -26,7 +28,7 @@ export function hexToKmlColor(
   var b = hexColor[4] + hexColor[5];
 
   var o = 'ff';
-  if (typeof opacity === 'number' && opacity >= 0.0 && opacity <= 1.0) {
+  if (is.number(opacity) && opacity >= 0.0 && opacity <= 1.0) {
     o = (opacity * 255).toString(16);
     if (o.indexOf('.') > -1) o = o.substr(0, o.indexOf('.'));
     if (o.length < 2) o = `0${o}`;
@@ -36,10 +38,16 @@ export function hexToKmlColor(
 }
 
 export function hasMarkerStyle(_: Properties): boolean {
-  return !!(_['marker-size'] || _['marker-symbol'] || _['marker-color']);
+  return !!(
+    _['icon-href'] ||
+    _['marker-size'] ||
+    _['marker-symbol'] ||
+    _['marker-color']
+  );
 }
 
 export function removeMarkerStyle(_: Properties): void {
+  delete _['icon-href'];
   delete _['marker-size'];
   delete _['marker-symbol'];
   delete _['marker-color'];
@@ -65,15 +73,22 @@ export function iconUrl(baseUrl: string, _: Properties): string {
   return `${baseUrl}pin-${size.charAt(0)}${symbol}+${color}.png`;
 }
 
+export function markerIconHref(baseUrl: string, _: Properties): string {
+  const iconHref = _['icon-href'];
+  return is.nonEmptyString(iconHref) ? iconHref : iconUrl(baseUrl, _);
+}
+
 export function markerStyle(
   baseUrl: string,
   _: Properties,
   styleHash: string
 ): string {
+  const href = esc(markerIconHref(baseUrl, _)) ?? '';
+
   return tag(
     'Style',
     { id: styleHash },
-    tag('IconStyle', tag('Icon', tag('href', iconUrl(baseUrl, _)))) + iconSize
+    tag('IconStyle', tag('Icon', tag('href', href))) + iconSize
   );
 }
 
@@ -121,22 +136,21 @@ export function polygonAndLineStyle(_: Properties, styleHash: string): string {
   return tag('Style', { id: styleHash }, lineStyle + polyStyle);
 }
 
-// ## Style helpers
-export function hashStyle(_: Properties): string {
-  var hash = '';
+export function polygonAndLineStyleKey(_: Properties): string | undefined {
+  if (
+    !_.stroke &&
+    !_['stroke-width'] &&
+    !_['stroke-opacity'] &&
+    !_.fill &&
+    !_['fill-opacity']
+  )
+    return undefined;
 
-  if (_['marker-symbol']) hash = `${hash}ms${_['marker-symbol']}`;
-  if (_['marker-color'])
-    hash = `${hash}mc${_['marker-color'].replace('#', '')}`;
-  if (_['marker-size']) hash = `${hash}ms${_['marker-size']}`;
-  if (_.stroke) hash = `${hash}s${_.stroke.replace('#', '')}`;
-  if (_['stroke-width'])
-    hash = `${hash}sw${_['stroke-width'].toString().replace('.', '')}`;
-  if (_['stroke-opacity'])
-    hash = `${hash}mo${_['stroke-opacity'].toString().replace('.', '')}`;
-  if (_.fill) hash = `${hash}f${_.fill.replace('#', '')}`;
-  if (_['fill-opacity'])
-    hash = `${hash}fo${_['fill-opacity'].toString().replace('.', '')}`;
-
-  return hash;
+  return JSON.stringify([
+    _.stroke,
+    _['stroke-width'],
+    _['stroke-opacity'],
+    _.fill,
+    _['fill-opacity'],
+  ]);
 }
